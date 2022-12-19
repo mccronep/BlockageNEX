@@ -1,0 +1,705 @@
+#!/usr/local/bin/python
+# -*- coding: utf-8 -*-
+#==============================================================
+#
+#==-ROC/FRB PYTHON PROGRAM DEFINITION-==========================================
+#
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# NAME:
+# :::::::::::::::::::::::::::::::::::::::::::::::
+#
+# blockage_guam_1.py
+#
+# :::::::::::::::::::::::::::::::::::::::::::::::
+#
+#  PROGRAM OVERVIEW:
+#       (1) This program reads netCDF files from NSSL Radar Blockage data netCDF 
+#
+#--------------------------------------------------------------------------------------------------
+# PARAMETER TABLE:
+#--------------------------------------------------------------------------------------------------
+#
+# I/O		NAME         	TYPE		FUNCTION
+#--------------------------------------------------------------------------------------------------
+#  I            netCDF4 file    input           INPUT netCDF
+#  O            JPEG            output          
+#_________________________________________________________________________________________________
+#=================================================================================================
+# See footer to see netCDF4 header (example)
+#=================================================================================================
+#-
+#
+# Programmer:Mr. Paul McCrone 13 DEC 2022
+#========================================================================================
+#  Version 1.0   , Dated 2022-Dec-13
+#
+#========================================================================================
+#  NOTE: THIS PROGRAM ASSUMES THE USE OF Python version 3.X using RHEL.
+#-----------------------------------------------------------------------
+#  PYTHON MODULES USED: numpy, matplotlib, netCDF4, calendar,os,cartopy 
+#-----------------------------------------------------------------------
+#
+try:
+    #
+    from matplotlib import use
+    #use("agg")
+    #
+    import calendar
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from netCDF4 import Dataset
+    import cartopy.feature as cfeat
+    #
+    import cartopy.crs as ccrs
+except:
+    print('Python Module Failure')
+    print('Check out python modules')
+   
+
+#
+dadash='-------------------------------------'
+print(dadash+dadash)
+
+pi = 355.0/113.0
+
+deg2rad = pi/180.0
+
+WARNING_INIT_ERROR = 1
+
+##
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+#--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x
+#  LIST OF PYTHON FUNCTIONS:
+#--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x
+#
+#  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+#  ==> JulianDate_to_MMDDYYY(y,jd)
+#      --> INPUT: <<Year, Julian Date>>, OUTPUT: month,jd,y
+#  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+#  ==> ncdump(file_object, verb) 
+#       --> INPUT: <<String>>, OUTPUT: valid  .
+#  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+#  ==> IS_This_Path_Valid(thispath)
+#       --> INPUT: 
+#  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+#  ==> main()
+#       --> This is the -MAIN- program.
+#       --> INPUT: <<--NONE-->>, OUTPUT: Execution Error codes.
+#
+#  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .  .
+#
+#--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x--x
+#
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+
+def JulianDate_to_MMDDYYY(y,jd):
+    month = 1
+    day = 0
+    while jd - calendar.monthrange(y,month)[1] > 0 and month <= 12:
+        jd = jd - calendar.monthrange(y,month)[1]
+        month = month + 1
+    return month,jd,y
+
+    #
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+    #
+    #### END OF FUNCTION JulianDate_to_MMDDYYY
+    #
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+#
+#
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+#
+#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+#######  Begin Function ncdump
+#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+##
+
+def ncdump(nc_fid, verb=True):
+    '''
+    ncdump outputs dimensions, variables and their attribute information.
+    The information is similar to that of NCAR's ncdump utility.
+    ncdump requires a valid instance of Dataset.
+    Parameters
+    ----------
+    nc_fid : netCDF4.Dataset
+        A netCDF4 dateset object
+    verb : Boolean
+        whether or not nc_attrs, nc_dims, and nc_vars are printed
+    Returns
+    -------
+    nc_attrs : list
+        A Python list of the NetCDF file global attributes
+    nc_dims : list
+        A Python list of the NetCDF file dimensions
+    nc_vars : list
+        A Python list of the NetCDF file variables
+    '''
+    def print_ncattr(key):
+        """
+        Prints the NetCDF file attributes for a given key
+        Parameters
+        ----------
+        key : unicode
+            a valid netCDF4.Dataset.variables key
+        """
+        try:
+            print("\t\ttype:", repr(nc_fid.variables[key].dtype))
+            for ncattr in nc_fid.variables[key].ncattrs():
+                print('\t\t%s:' % ncattr,\
+                      repr(nc_fid.variables[key].getncattr(ncattr)))
+        except KeyError:
+            print("\t\tWARNING: %s does not contain variable attributes" % key)
+
+    # NetCDF global attributes
+    nc_attrs = nc_fid.ncattrs()
+    if verb:
+        print("NetCDF Global Attributes:")
+        for nc_attr in nc_attrs:
+            print('\t%s:' % nc_attr, repr(nc_fid.getncattr(nc_attr)))
+    nc_dims = [dim for dim in nc_fid.dimensions]  # list of nc dimensions
+    # Dimension shape information.
+    if verb:
+        print("NetCDF dimension information:")
+        for dim in nc_dims:
+            print("\tName:", dim)
+            print("\t\tsize:", len(nc_fid.dimensions[dim]))
+            print_ncattr(dim)
+    # Variable information.
+    nc_vars = [var for var in nc_fid.variables]  # list of nc variables
+    if verb:
+        print("NetCDF variable information:")
+        for var in nc_vars:
+            if var not in nc_dims:
+                print('\tName:', var)
+                print("\t\tdimensions:", nc_fid.variables[var].dimensions)
+                print("\t\tsize:", nc_fid.variables[var].size)
+                print_ncattr(var)
+    return (nc_attrs, nc_dims, nc_vars)
+
+    #
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+    #### END OF FUNCTION ncdump
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+#
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+#######  Begin Function IS_This_Path_Valid()
+#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+#
+def IS_This_Path_Valid(thispath):
+    #-----
+    # If this path is Valid, then say so [print in the affirmative]
+    # return this_return_value=1
+    # Otherwise, state that the path is invalid, then return this_return_value=0
+    #.....................
+    #
+    this_return_value = 0
+    #
+    # Check thispath  
+    #
+    valid_thispath=os.path.exists(thispath)
+    #valid_thispath=OS.path.exists(thispath)
+
+    if valid_thispath:
+        print(dadash)
+        print("You are requesting the validity of this path: "+thispath)
+        print("This path is VALID and EXISTS")
+        this_return_value = 1
+        print(dadash)
+        #
+    else:
+        #
+        print("--CAUTION--")
+        print("You are requesting the validity of this path: "+thispath)
+        print("-------The indicated path is INVALID! NEED TO CHECK THIS!!!!!!!! -----------------")
+        this_return_value = 0
+        #-----------------------------------------------------------
+        # End of if block
+        #-----------------------------------------------------------
+    #.....................
+    return(this_return_value)
+    #
+    #    
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+    #### END OF IS_This_Path_Valid    
+    #-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----
+
+########################################################################################################
+#### BEGINNING OF MAIN FUNCTION ########################################################################
+########################################################################################################
+#######-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#                         
+#######  Begin MAIN Function for processing NETCDF file of NEXRAD BLOCAKGE DATA                               
+#######-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#-----#
+def main():
+    #
+    print(dadash+dadash)
+    print(dadash+dadash)
+    #
+    print("Reading NetCDF file")
+    print("Begin Main...")
+    #
+    max_range=300#km
+    max_range_meters=max_range*1000.0#meter
+    my_gatewidth=250#meter
+     
+    print(dadash+dadash)
+    print(dadash+dadash)
+    #
+    #
+    list_of_lats = np.arange(0.0,90.0,1.0)
+    #
+    #
+    list_of_lons =np.arange(-179.0,181.0,1.0)
+    #
+    #
+    list_of_5lats = np.arange(-85.0,90.0,10.0)
+    #
+    list_of_5lons =np.arange(-175.0,180.0,20.0)
+    #
+    list_of_500lats = np.arange(-8500,9000,1000)
+    #
+    list_of_500lons =np.arange(-17500,18000,2000)
+    #
+    #
+    #
+    #==================================================
+    # read in the file, create an h5py object
+    #==================================================
+    #
+    #
+    pythonhome='/home/pmccrone/python/src/blockage/PGUA_20221209/'
+    check_path = 0
+    check_path = IS_This_Path_Valid(pythonhome)
+    if (check_path == 0):
+        print(dadash+dadash)
+        print("ERROR: The path --pythonhome --  : "+str(pythonhome)+" is not valid. Please Check.")
+        print(dadash+dadash)
+        this_execution=90
+        return this_execution
+        #---------------------
+        # END of IF Block
+        #---------------------
+    data_dir='/home/pmccrone/python/src/blockage/PGUA_20221209/'
+    derivedatafrom ='BeamBlockage_00.50_20180312-215708.netcdf'
+
+    ##
+    check_path = 0
+
+    check_path = IS_This_Path_Valid(data_dir)
+    if (check_path == 0):
+        print(dadash+dadash)
+        print("ERROR: The path --data_dir --  : "+str(data_dir)+" is not valid. Please Check.")
+        print(dadash+dadash)
+        this_execution=90
+        return this_execution
+        #---------------------
+        # END of IF Block
+
+    filename = data_dir+derivedatafrom
+
+    list_of_files=['BeamBlockage_00.20_20180312-215608.netcdf',  'BeamBlockage_03.50_20180312-220708.netcdf',  'BeamBlockage_08.70_20180312-221808.netcdf', \
+    'BeamBlockage_00.50_20180312-215708.netcdf',  'BeamBlockage_04.00_20180312-220808.netcdf',  'BeamBlockage_09.90_20180312-221908.netcdf', \
+    'BeamBlockage_00.90_20180312-215808.netcdf',  'BeamBlockage_04.30_20180312-220908.netcdf',  'BeamBlockage_10.00_20180312-222008.netcdf', \
+    'BeamBlockage_01.30_20180312-215908.netcdf',  'BeamBlockage_04.50_20180312-221008.netcdf',  'BeamBlockage_12.00_20180312-222108.netcdf',\
+    'BeamBlockage_01.45_20180312-220008.netcdf',  'BeamBlockage_05.10_20180312-221108.netcdf',  'BeamBlockage_12.50_20180312-222208.netcdf',\
+    'BeamBlockage_01.50_20180312-220108.netcdf',  'BeamBlockage_05.25_20180312-221208.netcdf',  'BeamBlockage_14.00_20180312-222308.netcdf',\
+    'BeamBlockage_01.80_20180312-220208.netcdf',  'BeamBlockage_06.00_20180312-221308.netcdf',  'BeamBlockage_14.60_20180312-222408.netcdf',\
+    'BeamBlockage_02.40_20180312-220308.netcdf',  'BeamBlockage_06.20_20180312-221408.netcdf',  'BeamBlockage_15.60_20180312-222508.netcdf',\
+    'BeamBlockage_02.50_20180312-220408.netcdf',  'BeamBlockage_06.40_20180312-221508.netcdf',  'BeamBlockage_16.70_20180312-222608.netcdf',\
+    'BeamBlockage_03.10_20180312-220508.netcdf',  'BeamBlockage_07.50_20180312-221608.netcdf',  'BeamBlockage_19.50_20180312-222708.netcdf',\
+    'BeamBlockage_03.35_20180312-220608.netcdf',  'BeamBlockage_08.00_20180312-221708.netcdf']
+
+
+    read_data_ok = 1
+    try:
+        ff=Dataset(filename,'r')
+    except:
+        read_data_ok = 0
+        print("WARNING: Error reading netCDF datafile: "+filename)
+        this_execution=91
+        return this_execution
+        #continue
+        # Do not continue unless the file was read in properly.
+        #=================================================================#
+   
+    #
+    if (read_data_ok  == 1):
+        print("SUCCESS: Read in netCDF fileNAME : "+filename)
+        #
+        #=====================================
+
+ 
+
+    #-------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------------
+    #-------------------------------------------------------------------------------
+
+    ##mylist=list(ff.keys())
+
+    print(dadash+dadash)
+    print ("- - - - - - - - - - - - -")
+    #
+    #=====================================
+    nc_attrs, nc_dims, nc_vars = ncdump(ff)
+    #=====================================
+    print("nc_attrs") 
+    print(nc_attrs)
+    lenc=len(nc_attrs)
+
+
+    icao=ff.getncattr(nc_attrs[lenc-1])
+    radarlat=ff.Latitude
+    radarlong=ff.Longitude
+    elevation_angle=ff.Elevation
+    Datatype=ff.TypeName
+    radarHeight=ff.Height
+
+    print("ICAO of RADAR:  "+str(icao))
+    print("Radar Latitude: "+str(radarlat))
+    print("Radar Longitude:"+str(radarlong))
+    print("Elevation Angle:"+str(elevation_angle))
+    print("Data Type:      "+str(Datatype)) 
+    print("Radar Height:   "+str(radarHeight))
+
+
+    ncattr_proj= 'lambert_projection'
+
+    pc_long_str = 'longitude_of_central_meridian'
+
+    pc_lat_str= 'latitude_of_projection_origin'
+
+    #-------------------------------------------------------------------------------
+
+    Azimuth=ff.variables['Azimuth'][:]  #
+    BeamWidth = ff.variables['BeamWidth'][:]#
+
+    AzimuthalSpacing = ff.variables['AzimuthalSpacing'][:]#
+
+    GateWidth = ff.variables['GateWidth'][:]#
+
+    NyquistVelocity = ff.variables['NyquistVelocity'][:] #
+
+    BeamBlock=ff.variables['BeamBlockage'][:]  # extract/copy the data
+    pixelx=ff.variables['pixel_x'][:]  # extract/copy the data
+    pixely=ff.variables['pixel_y'][:]  # extract/copy the data
+    pixelcount=ff.variables['pixel_count']
+    #
+
+    n_Azimuth=len(Azimuth)
+    n_BeamWidth=len(BeamWidth)
+    n_AzimuthalSpacing=len(AzimuthalSpacing)
+    n_GateWidth=len(GateWidth)
+    n_NyquistVelocity=len(NyquistVelocity)
+
+
+ 
+    n_BeamBlock=len(BeamBlock)#
+    n_pixelx=len(pixelx)#
+    n_pixely=len(pixely)#
+    n_pixelcount=len(pixelcount)
+
+    print("Number of elements in n_Azimuth:"+str(n_Azimuth))
+    print("Number of elements in n_BeamWidth:"+str(n_BeamWidth))
+    print("Number of elements in n_AzimuthalSpacing:"+str(n_AzimuthalSpacing))
+    print("Number of elements in n_GateWidth:"+str(n_GateWidth))
+    print("Number of elements in n_NyquistVelocity:"+str(n_NyquistVelocity))
+
+    print("Number of elements in BeamBlock:"+str(n_BeamBlock))
+    print("Number of elements in pixel_x:"+str(n_pixelx))
+    print("Number of elements in pixel_y:"+str(n_pixely))
+    print("Number of elements in pixelcount:"+str(n_pixelcount))    
+    # Plot points
+#    fig, ax = plt.subplots(figsize=(10, 10))
+#    ax.scatter(pixelx, pixely, c=BeamBlock)
+
+
+#    theta = Azimuth(pixel_x)
+#    r= 
+
+    Gate = np.arange(0,max_range_meters, my_gatewidth)
+    n_Gate=len(Gate)
+    print("Number of elements in Gate:"+str(n_Gate))    
+    
+ 
+    fig, ax= plt.subplots(figsize=(10, 10),subplot_kw={'projection':'polar'})
+
+    index=0
+
+    mylgray=0
+    mygray=0
+    myblue=0
+    myyellow=0
+    myorange=0
+    myred=0
+
+
+    degtorad=np.pi/180.0
+
+    for pix in pixelx:
+        #-
+        theta=Azimuth[pix]*degtorad
+        r=Gate[pixely[index]]
+
+        bblock=BeamBlock[index]*100.0
+        blck_str='Less than 10%'
+
+
+        if bblock <=10:
+            mycolor='lightgray'
+        elif bblock >10 and bblock <=20:
+            mycolor='gray'
+            blck_str='10 to 20%'
+        elif bblock >20 and bblock <=40:
+            mycolor='blue'
+            blck_str='20 to 40%'
+        elif bblock >40 and bblock <=60:
+            mycolor='yellow'
+            blck_str='40 to 60%'
+        elif bblock >60 and bblock <=80:
+            mycolor='orange'
+            blck_str='60 to 80%'
+        else:
+            mycolor='red'
+            blck_str='Over 80%'
+
+  
+        #now draw a line using number of pixelcounts
+        newrange=r+(GateWidth[0]*pixelcount[index])
+        theta_values=[theta, theta]
+        range_values=[r,newrange]
+
+        #Here I am adding a legend, but I only want to add each color once.
+
+        #if the colors were already added tot he legend, then plot the line.
+        ax.plot(theta_values,range_values,'o-', color=mycolor)
+
+        index=index+1
+        #
+        #----
+   
+
+    mrm=max_range_meters
+    ax.set_rmax(mrm/10.0)
+
+    #ax.set_rticks([5, 10, 15, 20]) # Less radial ticks
+    ax.set_rticks([0.5, 1, 1.5, 2]) # Less radial ticks
+    ax.set_rgrids([mrm/3.0, mrm/5.0,mrm/10.0,mrm/15.0,mrm/20.0,mrm/30.0])
+    ax.set_thetagrids([0,15,30,45,60,75,90,105,120,135,150,165,180,195,210,225,240,255,270,285,300,315,330,345])
+
+    ax.set_rlabel_position(-22.5) # Move radial labels away from plotted line
+
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.grid(True)
+
+    ax.set_title("Blockage: Station "+str(icao)+" Lat:"+str(radarlat)+" Long:"+str(radarlong), va='bottom')
+
+
+
+    ax.legend()
+    plt.show()
+    this_execution=1
+    return this_execution
+    ########################################################################################################
+    ########################################################################################################
+    #### END OF MAIN FUNCTION ##############################################################################
+    ########################################################################################################
+    ########################################################################################################
+#
+
+program_name="blockage_guam_4.py"
+print(dadash)
+#
+print("-------Program BEGIN EXECUTION - "+str(program_name)+" -----------------")
+#----------------------------------------------------------------------
+# This is the so-called primary part of the program where
+# everything starts. It starts with invoking the -main- function below.
+# The intent is to have virtually everything be done in the -main- function
+# and call other functions as needed from within the -main- function.
+# The reason for doing this is to enable error trapping more easily
+# in the -main- routine. If the -main- code were not in a function, 
+# then more effort would need to be expended in trapping runtime errors.
+#
+# For a simple demo of this idea , See: 
+# http://anh.cs.luc.edu/python/hands-on/3.1/handsonHtml/functions.html
+#    
+#----------------------------------------------------------------------
+my_execution = 0
+
+if WARNING_INIT_ERROR == 1:
+    #
+    my_execution=main()
+    #
+else:
+    #
+    my_execution = 11
+    #-----------------------------------------------------------
+    # End of if block
+    #---------------------------------------------------------
+
+# Let me know if the program executed successfully.
+# Otherwise, give me a --helpful-- error message!
+
+if my_execution == 1:
+    print("--------------------------------------------------------------------------------")
+    print("-------Program Executed SUCCESSFULLY, No Errors were detected! -----------------")
+    print("--------------------------------------------------------------------------------")
+    #
+elif my_execution == 11:
+    #
+    print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+    print("------Program Execution Code....."+str(my_execution))
+    print("_________________________________________________________________________________")
+    print("------There were or was an initialization error! A key configuration ------------")
+    print("------file or files were either missing, or there was a permissions   -----------")
+    print("------issue that prevented our ability to read the file or files.     -----------")
+    print("IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+    #
+elif my_execution == 55:
+    #
+    print("NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN")
+    print("------Program Execution Code....."+str(my_execution))
+    print("_________________________________________________________________________________")
+    print("------There were or was no NETCDF file(s) available to be processed! ------------")
+    print("------If there are no valid NETCDF files- the process just ends!  ---------------")
+    print("------PLEASE CHECK PREVIOUS log entries for possible ERROR MESSAGES!!!!!!!! -----")
+    print("------POSSILBE DPS or BFT problem! POSSIBLE SYSTEM OPERATING SYSTEM PROBLEM!-----")
+    print("------POSSIBLE GPFS FILE SYSTEM PROBLEM!-----------------------------------------")
+    print("NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN")
+    #
+elif my_execution == 90:
+    #
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    print("-------Program Execution Code....."+str(my_execution))
+    print("_________________________________________________________________________________")
+    print("-----There were or was a problem with PYTHON getting access to a PATH! ----------")
+    print("-----In other words--- the software could not access a subdirectory it needs!  --")
+    print("-----The software cant get to a data path either to read or write etc!  ---------")
+    print("-----PLEASE CHECK PREVIOUS log entries for possible ERROR MESSAGES!!!!!!!! ------")
+    print("-----POSSIBLE LINUX OPERATING SYSTEM PROBLEM! POSSIBLE GPFS FILE SYSTEM PROBLEM!-")
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    #
+elif my_execution == 91:
+    #
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    print("-------Program Execution Code....."+str(my_execution))
+    print("_________________________________________________________________________________")
+    print("-----There were or was a problem with PYTHON getting access to a netCDF! --------")
+    print("-----There is a problem with the PAA sector! ------------------------------------")
+    print("-----The software cant get to data  ---------")
+    print("-----PLEASE CHECK PREVIOUS log entries for possible ERROR MESSAGES!!!!!!!! ------")
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    #
+elif my_execution == 92:
+    #
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    print("-------Program Execution Code....."+str(my_execution))
+    print("_________________________________________________________________________________")
+    print("-----There were or was a problem with PYTHON getting access to a netCDF! --------")
+    print("-----There is a problem with the PAB sector! ------------------------------------")
+    print("-----The software cant get to data  ---------")
+    print("-----PLEASE CHECK PREVIOUS log entries for possible ERROR MESSAGES!!!!!!!! ------")
+    print("PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP")
+    #
+elif my_execution == 97:
+    #
+    print("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
+    print("-------Program Execution Code....."+str(my_execution))
+    print("________________________________________________________________________________")
+    print("-------Data conversion executed successfully (an ASCII file was made)....-------")
+    print("-------but ....there were issues interfacing with the operating system! --------")
+    print("-------Issues with the operating system could include......... -----------------")
+    print("-------file copy- file move- file rename--- file permissions- etc.  ------------")
+    print("-------PLEASE CHECK PREVIOUS log entries for possible ERROR MESSAGES!!!!! ------")
+    print("-------POSSILBE DPS or DART problem! POSSIBLE SYSTEM OS PROBLEM!         -------")
+    print("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
+    #
+else:
+    #
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    print("-------Program Execution Code....."+str(my_execution))
+    print("________________________________________________________________________________")
+    print("-------It appears that the program did not execute properly!!!!!!!! ------------")
+    print("-------The software exited with an unexpected error code!!!!!!!!!!! ------------")
+    print("-------PLEASE CHECK PREVIOUS log entries for ERROR MESSAGES!!!!!!!! ------------")
+    print("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    #-----------------------------------------------------------
+    #-----------------------------------------------------------
+    # End of if block
+    #-----------------------------------------------------------'
+
+# NETCDF Header
+# netcdf BeamBlockage_00.50_20180312-215708 {
+# dimensions:
+#	Azimuth = 720 ;
+#	Gate = 1200 ;
+#	pixel = 2237 ;
+# variables:
+#	float Azimuth(Azimuth) ;
+#		Azimuth:units = "Degrees" ;
+#	float BeamWidth(Azimuth) ;
+#		BeamWidth:units = "Degrees" ;
+#	float AzimuthalSpacing(Azimuth) ;
+#		AzimuthalSpacing:units = "Degrees" ;
+#	float GateWidth(Azimuth) ;
+#		GateWidth:units = "Meters" ;
+#	float NyquistVelocity(Azimuth) ;
+#		NyquistVelocity:units = "MetersPerSecond" ;
+#	float BeamBlockage(pixel) ;
+#		BeamBlockage:BackgroundValue = -99900 ;
+#		BeamBlockage:SparseGridCompression = 0.007767361f ;
+#		BeamBlockage:units = "dimensionless" ;
+#		BeamBlockage:NumValidRuns = 2237 ;
+#	short pixel_x(pixel) ;
+#	short pixel_y(pixel) ;
+#	int pixel_count(pixel) ;
+#
+#// global attributes:
+#		:Elevation = 0.5 ;
+#		:ElevationUnits = "Degrees" ;
+#		:RangeToFirstGate = 0. ;
+#		:RangeToFirstGateUnits = "Meters" ;
+#		:MissingData = -99900.f ;
+#		:RangeFolded = -99901.f ;
+#		:TypeName = "BeamBlockage" ;
+#		:DataType = "SparseRadialSet" ;
+#		:Latitude = 13.456 ;
+#		:Longitude = 144.8111 ;
+#		:Height = 110. ;
+#		:Time = 1520891828 ;
+#		:FractionalTime = 0.491 ;
+#		:attributes = " ColorMap Unit radarName" ;
+#		:ColorMap-unit = "dimensionless" ;
+#		:ColorMap-value = "Fuzzy" ;
+#		:Unit-unit = "dimensionless" ;
+#		:Unit-value = "dimensionless" ;
+#		:radarName-unit = "dimensionless" ;
+#		:radarName-value = "PGUA" ;
+#data:
+#
+# Azimuth = 0
+# BeamWidth = 1
+# AzimuthalSpacing = 0.5
+# GateWidth = 250
+# NyquistVelocity = _
+# BeamBlockage = 0
+# pixel_x = 0
+# pixel_y = 0
+# pixel_count = 13
+#
+
+##---------------------------------------------------
+##
+##
+## End of CODE
+##
+##
+##---------------------------------------------------
